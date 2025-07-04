@@ -154,9 +154,53 @@ def render_one(video_path, top_text, bottom_text, out_path):
     # Desenha texto inferior misturando fonte normal e emoji
     draw_text_mixed_img(bg, draw, (x_rect+pad_x, y_rect+pad_y), bottom_text, fnt_bot, COLOR_BOTTOM, size_bot)
 
-    # Salva apenas a imagem final, sem inserir vídeo
+    # Salva a imagem final (moldura)
     out_img = out_path.replace('.mp4', '_onlyimg.png')
     bg.save(out_img)
+
+    # --- INSERE O VÍDEO CENTRALIZADO NA ÁREA PRETA DA MOLDURA ---
+    # Descobre a área preta (moldura) na imagem base
+    # Ajuste exato da faixa preta conforme medições do Canva
+    faixa_h = 850
+    faixa_w = bg.width
+    # Centraliza a faixa preta verticalmente
+    faixa_top = (bg.height - faixa_h) // 2
+    faixa_bot = faixa_top + faixa_h
+
+    # Carrega o vídeo
+    clip_vid = VideoFileClip(video_path)
+    # Redimensiona o vídeo para caber na faixa preta (sem ultrapassar)
+    # Mantém proporção e nunca ultrapassa a faixa preta
+    if (clip_vid.h / faixa_h) > (clip_vid.w / faixa_w):
+        # vídeo é mais "alto" que a faixa: limita pela altura
+        if hasattr(clip_vid, 'resize'):
+            clip_vid_resized = clip_vid.resize(height=faixa_h)
+        else:
+            clip_vid_resized = clip_vid.resized(height=faixa_h)
+    else:
+        # vídeo é mais "largo" que a faixa: limita pela largura
+        if hasattr(clip_vid, 'resize'):
+            clip_vid_resized = clip_vid.resize(width=faixa_w)
+        else:
+            clip_vid_resized = clip_vid.resized(width=faixa_w)
+    # Centraliza o vídeo na faixa preta
+    new_w, new_h = clip_vid_resized.size
+    x_center = (bg.width - new_w) // 2
+    y_center = faixa_top + (faixa_h - new_h) // 2 - 30
+
+    # Cria um clip da moldura (imagem) com duração compatível
+    clip_bg = ImageClip(out_img)
+    if hasattr(clip_bg, 'set_duration'):
+        clip_bg = clip_bg.set_duration(clip_vid.duration)
+    else:
+        clip_bg = clip_bg.with_duration(clip_vid.duration)
+    # Posiciona o vídeo sobre a moldura
+    if hasattr(clip_vid_resized, 'set_position'):
+        clip_vid_resized = clip_vid_resized.set_position((x_center, y_center))
+    else:
+        clip_vid_resized = clip_vid_resized.with_position((x_center, y_center))
+    comp = CompositeVideoClip([clip_bg, clip_vid_resized])
+    comp.write_videofile(out_path, codec="libx264", audio_codec="aac", fps=clip_vid.fps, threads=4)
 
 if __name__ == "__main__":
     os.makedirs(OUTPUT_DIR, exist_ok=True)
